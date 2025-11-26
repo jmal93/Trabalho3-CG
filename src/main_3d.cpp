@@ -24,6 +24,7 @@
 static float viewer_pos[3] = {2.0f, 3.5f, 4.0f};
 
 static ScenePtr scene;
+static ScenePtr reflector;
 static Camera3DPtr camera;
 static ArcballPtr arcball;
 
@@ -44,55 +45,65 @@ static void initialize(void)
   LightPtr light = Light::Make(0.0f, 0.0f, 0.0f, 1.0f, "camera");
 
   AppearancePtr white = Material::Make(1.0f, 1.0f, 1.0f);
-  AppearancePtr red = Material::Make(1.0f, 0.5f, 0.5f);
-  AppearancePtr poff = PolygonOffset::Make(-10, -10);
-  AppearancePtr paper = Texture::Make("decal", "../images/paper.jpg");
+  AppearancePtr floor_appearance = Material::Make(1.0f, 0.0f, 0.0f, 0.5f);
 
-  TransformPtr trf1 = Transform::Make();
-  trf1->Scale(3.0f, 0.3f, 3.0f);
-  trf1->Translate(0.0f, -1.0f, 0.0f);
-  TransformPtr trf2 = Transform::Make();
-  trf2->Scale(0.5f, 0.5f, 0.5f);
-  trf2->Translate(0.0f, 1.0f, 0.0f);
-  TransformPtr trf3 = Transform::Make();
-  trf3->Translate(0.8f, 0.0f, 0.8f);
-  trf3->Rotate(30.0f, 0.0f, 1.0f, 0.0f);
-  trf3->Rotate(90.0f, -1.0f, 0.0f, 0.0f);
-  trf3->Scale(0.5f, 0.7f, 1.0f);
+  TransformPtr floor_transform = Transform::Make();
+  floor_transform->Scale(3.0f, 0.1f, 3.0f);
+  floor_transform->Translate(0.0f, -1.0f, 0.0f);
+  TransformPtr sphere_transform = Transform::Make();
+  sphere_transform->Scale(0.5f, 0.5f, 0.5f);
+  sphere_transform->Translate(0.0f, 1.0f, 0.0f);
 
   Error::Check("before shps");
   ShapePtr cube = Cube::Make();
-  Error::Check("before quad");
-  ShapePtr quad = Quad::Make();
   Error::Check("before sphere");
   ShapePtr sphere = Sphere::Make();
   Error::Check("after shps");
 
   // create shader
   ShaderPtr shader = Shader::Make(light, "world");
-  shader->AttachVertexShader("../shaders/ilum_vert/vertex.glsl");
-  shader->AttachFragmentShader("../shaders/ilum_vert/fragment.glsl");
+  shader->AttachVertexShader("shaders/ilum_vert/vertex.glsl");
+  shader->AttachFragmentShader("shaders/ilum_vert/fragment.glsl");
   shader->Link();
 
   // Define a different shader for texture mapping
   // An alternative would be to use only this shader with a "white" texture for untextured objects
   ShaderPtr shd_tex = Shader::Make(light, "world");
-  shd_tex->AttachVertexShader("../shaders/ilum_vert/vertex_texture.glsl");
-  shd_tex->AttachFragmentShader("../shaders/ilum_vert/fragment_texture.glsl");
+  shd_tex->AttachVertexShader("shaders/ilum_vert/vertex_texture.glsl");
+  shd_tex->AttachFragmentShader("shaders/ilum_vert/fragment_texture.glsl");
   shd_tex->Link();
 
-  // build scene
-  NodePtr root = Node::Make(shader,
-                            {Node::Make(trf1, {red}, {cube}),
-                             Node::Make(trf2, {white}, {sphere})});
+  NodePtr sphere_node = Node::Make(sphere_transform, {white}, {sphere});
+  NodePtr root = Node::Make(shader, {sphere_node});
   scene = Scene::Make(root);
+
+  NodePtr floor_node = Node::Make(floor_transform, {floor_appearance}, {cube});
+  reflector = Scene::Make(Node::Make(shader, {floor_node}));
 }
 
 static void display(GLFWwindow *win)
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear window
   Error::Check("before render");
+
+  // desenha cena refletida
+  NodePtr root = scene->GetRoot();
+  TransformPtr trf = Transform::Make();
+  trf->Scale(1.0f, -1.0f, 1.0f);
+  root->SetTransform(trf);
+  glFrontFace(GL_CW);
   scene->Render(camera);
+  glFrontFace(GL_CCW);
+  root->SetTransform(nullptr);
+
+  // desenha cena
+  scene->Render(camera);
+
+  // desenha refletor
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  reflector->Render(camera);
+  glDisable(GL_BLEND);
   Error::Check("after render");
 }
 

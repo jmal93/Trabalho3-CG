@@ -17,6 +17,8 @@ uniform vec4 mdif;
 uniform vec4 mspe;
 uniform float mshi;
 
+uniform float mopacity;
+
 out vec4 color;
 
 void main (void) 
@@ -35,7 +37,7 @@ void main (void)
     color += mspe * lspe * pow(max(0,dot(refl,normalize(-veye))),mshi); 
   }
 
-  color.a = mdif.a;
+  color.a = mopacity;
 
   gl_Position = Mvp*coord; 
 }
