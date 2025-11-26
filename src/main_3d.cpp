@@ -48,15 +48,16 @@ static void initialize(void)
   AppearancePtr floor_appearance = Material::Make(1.0f, 0.0f, 0.0f, 0.5f);
 
   TransformPtr floor_transform = Transform::Make();
-  floor_transform->Scale(3.0f, 0.1f, 3.0f);
-  floor_transform->Translate(0.0f, -1.0f, 0.0f);
+  floor_transform->Scale(3.0f, 3.0f, 3.0f);
+  floor_transform->Rotate(-90, 1.0f, 0.0f, 0.0f);
+  floor_transform->Translate(-0.5f, -0.5f, 0.0f);
   TransformPtr sphere_transform = Transform::Make();
   sphere_transform->Scale(0.5f, 0.5f, 0.5f);
   sphere_transform->Translate(0.0f, 1.0f, 0.0f);
 
   Error::Check("before shps");
   ShapePtr cube = Cube::Make();
-  Error::Check("before sphere");
+  ShapePtr quad = Quad::Make();
   ShapePtr sphere = Sphere::Make();
   Error::Check("after shps");
 
@@ -77,16 +78,24 @@ static void initialize(void)
   NodePtr root = Node::Make(shader, {sphere_node});
   scene = Scene::Make(root);
 
-  NodePtr floor_node = Node::Make(floor_transform, {floor_appearance}, {cube});
+  NodePtr floor_node = Node::Make(floor_transform, {floor_appearance}, {quad});
   reflector = Scene::Make(Node::Make(shader, {floor_node}));
 }
 
 static void display(GLFWwindow *win)
 {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear window
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); // clear window
   Error::Check("before render");
 
+  // desenha refletor no stencil
+  glEnable(GL_STENCIL_TEST);
+  glStencilFunc(GL_NEVER, 1, 0xFFFF);
+  glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+  reflector->Render(camera);
+
   // desenha cena refletida
+  glStencilFunc(GL_EQUAL, 1, 0xFFFF);
+  glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
   NodePtr root = scene->GetRoot();
   TransformPtr trf = Transform::Make();
   trf->Scale(1.0f, -1.0f, 1.0f);
@@ -95,6 +104,7 @@ static void display(GLFWwindow *win)
   scene->Render(camera);
   glFrontFace(GL_CCW);
   root->SetTransform(nullptr);
+  glDisable(GL_STENCIL_TEST);
 
   // desenha cena
   scene->Render(camera);
