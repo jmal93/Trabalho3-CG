@@ -3,8 +3,8 @@
 in vec4 color;
 out vec4 fcolor;
 
-void main (void)
+void main(void)
 {
-  fcolor = color;
+    fcolor = color;
 }
 

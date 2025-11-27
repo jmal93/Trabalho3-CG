@@ -65,6 +65,7 @@ static void initialize(void)
   ShaderPtr shader = Shader::Make(light, "world");
   shader->AttachVertexShader("shaders/ilum_vert/vertex.glsl");
   shader->AttachFragmentShader("shaders/ilum_vert/fragment.glsl");
+  shader->AttachGeometryShader("shaders/ilum_vert/geometry.glsl");
   shader->Link();
 
   // Define a different shader for texture mapping
