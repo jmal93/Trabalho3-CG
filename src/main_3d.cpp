@@ -39,7 +39,7 @@ static void initialize(void)
   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
   // enable depth test
   glEnable(GL_DEPTH_TEST);
-  glEnable(GL_CULL_FACE); // cull back faces
+  //glEnable(GL_CULL_FACE); // cull back faces
 
   // create objects
   camera = Camera3D::Make(viewer_pos[0], viewer_pos[1], viewer_pos[2]);
@@ -51,9 +51,9 @@ static void initialize(void)
 
   ShapePtr object_shape = ModelShape::Make(modeloTeste); 
   TransformPtr trf_object = Transform::Make();
-  trf_object->Scale(10.0f, 10.0f, 10.0f); 
+  trf_object->Scale(0.05f, 0.05f, 0.05f); 
   trf_object->Translate(1.0f, 0.0f, -1.0f); 
-  AppearancePtr object_appearance = Material::Make(0.7f, 0.7f, 0.7f);
+  AppearancePtr object_appearance = Material::Make(1.0f, 0.7f, 0.7f);
   NodePtr object_node = Node::Make(trf_object, {object_appearance}, {object_shape});
   //FIM DO TESTE ===========================================
 
@@ -92,7 +92,7 @@ static void initialize(void)
   shd_tex->Link();
 
   NodePtr sphere_node = Node::Make(sphere_transform, {white}, {sphere});
-  NodePtr root = Node::Make(shader, {sphere_node, object_node});
+  NodePtr root = Node::Make(shader, {object_node, sphere_node});
   scene = Scene::Make(root);
 
   NodePtr floor_node = Node::Make(floor_transform, {floor_appearance}, {quad});

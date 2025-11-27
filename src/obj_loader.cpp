@@ -1,160 +1,266 @@
-#include "obj_loader.h" 
+#include "obj_loader.h"
 
-#include <glad/glad.h>   // Para funções OpenGL
-#include <iostream>    // Para std::cerr
 #include <fstream>
 #include <sstream>
-#include <map>
+#include <iostream>
+#include <unordered_map>
 #include <tuple>
-#include <cstring> 
-#include <vector>
-#include <algorithm> // Para std::replace
+#include <algorithm>
 
-// Implementação do Carregamento (Agora suporta Quads via Triangulação Fan)
-void  ImportedModel::loadOBJ(const char* path) {
-    
-    std::vector<glm::vec3> temp_vertices;
-    std::vector<glm::vec2> temp_uvs;
-    std::vector<glm::vec3> temp_normals;
+ImportedModel::ImportedModel(const char* path)
+{
+    loadOBJ(path);
+}
 
-    std::vector<VertexData> final_vertices;
-    std::vector<unsigned int> final_indices;
-    std::map<std::tuple<unsigned int, unsigned int, unsigned int>, unsigned int> vertex_map;
+ImportedModel::~ImportedModel()
+{
+    if (EBO) glDeleteBuffers(1, &EBO);
+    if (VBO) glDeleteBuffers(1, &VBO);
+    if (VAO) glDeleteVertexArrays(1, &VAO);
+}
 
+struct VertexKey {
+    int v;
+    int vt;
+    int vn;
+
+    bool operator==(const VertexKey& other) const {
+        return v == other.v && vt == other.vt && vn == other.vn;
+    }
+};
+
+struct VertexKeyHash {
+    std::size_t operator()(const VertexKey& k) const noexcept {
+        std::size_t h1 = std::hash<int>()(k.v);
+        std::size_t h2 = std::hash<int>()(k.vt);
+        std::size_t h3 = std::hash<int>()(k.vn);
+        return ((h1 * 73856093) ^ (h2 * 19349663) ^ (h3 * 83492791));
+    }
+};
+
+void ImportedModel::loadOBJ(const char* path)
+{
     std::ifstream file(path);
     if (!file.is_open()) {
         std::cerr << "ERRO: Nao foi possivel abrir o arquivo OBJ: " << path << std::endl;
-        return; 
+        return;
     }
+
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec2> uvs;
+    std::vector<glm::vec3> normals;
+
+    std::vector<VertexData> finalVertices;
+    std::vector<unsigned int> finalIndices;
+
+    std::unordered_map<VertexKey, unsigned int, VertexKeyHash> vertexMap;
 
     std::string line;
     while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#')
+            continue;
 
         std::stringstream ss(line);
-        std::string lineHeader;
-        ss >> lineHeader;
+        std::string tag;
+        ss >> tag;
 
-        if (lineHeader == "v") {
-            glm::vec3 position;
-            if (ss >> position.x >> position.y >> position.z)
-                temp_vertices.push_back(position);
-        } else if (lineHeader == "vt") {
-            glm::vec2 uv;
-            if (ss >> uv.x >> uv.y) {
-                uv.y = -uv.y; 
-                temp_uvs.push_back(uv);
-            }
-        } else if (lineHeader == "vn") {
-            glm::vec3 normal;
-            if (ss >> normal.x >> normal.y >> normal.z)
-                temp_normals.push_back(normal);
-        } else if (lineHeader == "f") {
-            
-            // --- LOGICA ROBUSTA PARA PARSING DE FACES (SUPORTA QUADS/NGONS) ---
-            std::vector<unsigned int> face_v_indices, face_vt_indices, face_vn_indices;
-            std::string segment;
-
-            // Le os vertices da face, um de cada vez (ex: "1/1/1", "2/2/2", etc.)
-            while (ss >> segment) {
-                // Substitui barras '/' por espacos para facilitar a leitura com stringstream
-                std::replace(segment.begin(), segment.end(), '/', ' ');
-                std::stringstream segment_ss(segment);
-                
-                unsigned int v, vt, vn;
-                // Le os 3 indices (v, vt, vn)
-                if (segment_ss >> v >> vt >> vn) {
-                    face_v_indices.push_back(v);
-                    face_vt_indices.push_back(vt);
-                    face_vn_indices.push_back(vn);
-                }
-            }
-
-            // --- TRIANGULACAO E REINDEXACAO ---
-            if (face_v_indices.size() < 3) {
-                 // Nao deve acontecer se o parsing for bem feito, mas eh uma seguranca
-                 continue;
-            }
-
-            // Triangulacao (Fan Triangulation): Cria triangulos a partir do primeiro vertice (0)
-            for (size_t i = 0; i < face_v_indices.size() - 2; ++i) {
-                // Os vertices de cada triangulo sao: (0, i+1, i+2)
-                
-                // Vetor com os 3 conjuntos de indices do novo triangulo
-                std::vector<std::tuple<unsigned int, unsigned int, unsigned int>> triangle_keys;
-                
-                // Vértice A (sempre o primeiro da face)
-                triangle_keys.push_back({face_v_indices[0], face_vt_indices[0], face_vn_indices[0]});
-                // Vértice B
-                triangle_keys.push_back({face_v_indices[i+1], face_vt_indices[i+1], face_vn_indices[i+1]});
-                // Vértice C
-                triangle_keys.push_back({face_v_indices[i+2], face_vt_indices[i+2], face_vn_indices[i+2]});
-
-                // Reindexacao dos 3 vertices do novo triangulo
-                for (const auto& key : triangle_keys) {
-                    unsigned int idx_v = std::get<0>(key);
-                    unsigned int idx_uv = std::get<1>(key);
-                    unsigned int idx_n = std::get<2>(key);
-                    
-                    if (vertex_map.count(key)) {
-                        final_indices.push_back(vertex_map[key]);
-                    } else {
-                        // Novo vértice. Indices OBJ comecam em 1
-                        VertexData newVertex = {
-                            temp_vertices[idx_v - 1], 
-                            temp_uvs[idx_uv - 1], 
-                            temp_normals[idx_n - 1]
-                        };
-                        
-                        final_vertices.push_back(newVertex);
-                        unsigned int newIndex = final_vertices.size() - 1;
-                        final_indices.push_back(newIndex);
-                        vertex_map[key] = newIndex;
-                    }
-                }
-            }
-            // --- FIM DA TRIANGULACAO E REINDEXACAO ---
+        if (tag == "v") {
+            glm::vec3 p;
+            ss >> p.x >> p.y >> p.z;
+            positions.push_back(p);
         }
-    }
-    
-    // Nao eh necessario verificar se o arquivo esta aberto, pois o while(getline) cuida disso.
-    // Garante que o arquivo sera fechado
-    // file.close(); // file eh fechado automaticamente por ser std::ifstream
+        else if (tag == "vt") {
+            glm::vec2 uv;
+            ss >> uv.x >> uv.y;
+            uvs.push_back(uv);
+        }
+        else if (tag == "vn") {
+            glm::vec3 n;
+            ss >> n.x >> n.y >> n.z;
+            normals.push_back(n);
+        }
+        else if (tag == "f") {
+            // coleta todos os tokens da face
+            std::vector<std::string> faceTokens;
+            std::string vertToken;
+            while (ss >> vertToken) {
+                faceTokens.push_back(vertToken);
+            }
 
-    // 4. CONFIGURAÇÃO DO OPENGL (AGORA USANDO OS MEMBROS DA CLASSE)
-    
-    if (final_indices.empty() || final_vertices.empty()) {
-        std::cerr << "AVISO: Modelo carregado, mas sem vertices ou indices validos. Nao foi possivel desenhar." << std::endl;
-        // VAO/VBO/EBO permanecerao 0, o que e seguro, mas o modelo nao sera desenhado.
+            if (faceTokens.size() < 3) {
+                // face estranha, ignora
+                continue;
+            }
+
+            // converte cada token v/vt/vn em índices
+            std::vector<unsigned int> faceIndices; // índices no finalVertices
+            faceIndices.reserve(faceTokens.size());
+
+            auto processVertexToken = [&](const std::string &tok) -> unsigned int {
+                int vIndex = 0, tIndex = 0, nIndex = 0;
+
+                // formato possível: v, v/vt, v//vn, v/vt/vn
+                // quebra no '/'
+                int slashCount = std::count(tok.begin(), tok.end(), '/');
+
+                if (slashCount == 0) {
+                    // só v
+                    vIndex = std::stoi(tok);
+                } else {
+                    std::stringstream vss(tok);
+                    std::string vStr, tStr, nStr;
+
+                    std::getline(vss, vStr, '/');
+                    std::getline(vss, tStr, '/');
+                    if (!vss.eof()) {
+                        std::getline(vss, nStr, '/');
+                    }
+
+                    if (!vStr.empty()) vIndex = std::stoi(vStr);
+                    if (!tStr.empty()) tIndex = std::stoi(tStr);
+                    if (!nStr.empty()) nIndex = std::stoi(nStr);
+                }
+
+                // OBJ: índices começam em 1. 0 significa "não tem".
+                // negativo conta a partir do fim (não tratado aqui, só checamos).
+                auto fixIndex = [](int idx, int size) -> int {
+                    if (idx > 0) {
+                        return idx - 1;
+                    } else if (idx < 0) {
+                        return size + idx; // -1 = ultimo
+                    }
+                    return -1; // 0 => sem indice
+                };
+
+                int pv = fixIndex(vIndex, static_cast<int>(positions.size()));
+                int pt = fixIndex(tIndex, static_cast<int>(uvs.size()));
+                int pn = fixIndex(nIndex, static_cast<int>(normals.size()));
+
+                // checagem de limites
+                if (pv < 0 || pv >= (int)positions.size()) {
+                    std::cerr << "WARN: indice de posicao fora do range: " << vIndex 
+                              << " em linha: " << line << std::endl;
+                    pv = -1;
+                }
+                if (pt != -1 && (pt < 0 || pt >= (int)uvs.size())) {
+                    std::cerr << "WARN: indice de UV fora do range: " << tIndex 
+                              << " em linha: " << line << std::endl;
+                    pt = -1;
+                }
+                if (pn != -1 && (pn < 0 || pn >= (int)normals.size())) {
+                    std::cerr << "WARN: indice de normal fora do range: " << nIndex 
+                              << " em linha: " << line << std::endl;
+                    pn = -1;
+                }
+
+                VertexKey key{ pv, pt, pn };
+
+                auto it = vertexMap.find(key);
+                if (it != vertexMap.end()) {
+                    return it->second;
+                }
+
+                VertexData vd{};
+                if (pv != -1) vd.position = positions[pv];
+                if (pt != -1) vd.uv       = uvs[pt];
+                if (pn != -1) vd.normal   = normals[pn];
+
+                unsigned int newIndex = (unsigned int)finalVertices.size();
+                finalVertices.push_back(vd);
+                vertexMap[key] = newIndex;
+
+                return newIndex;
+            };
+
+            for (const auto& tok : faceTokens) {
+                unsigned int idx = processVertexToken(tok);
+                faceIndices.push_back(idx);
+            }
+
+            // triangula (fan)
+            for (size_t i = 1; i + 1 < faceIndices.size(); ++i) {
+                finalIndices.push_back(faceIndices[0]);
+                finalIndices.push_back(faceIndices[i]);
+                finalIndices.push_back(faceIndices[i + 1]);
+            }
+        }
+        // demais tags (mtl, usemtl, etc) ignoradas por enquanto
+    }
+
+    file.close();
+
+    if (finalVertices.empty() || finalIndices.empty()) {
+        std::cerr << "ERRO: modelo vazio apos carregar OBJ: " << path << std::endl;
         return;
     }
-    
-    indexCount = final_indices.size();
 
-    // 2. Gera os Buffers e Arrays usando os membros VAO, VBO, EBO
+    // cria buffers OpenGL
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
 
-    // VBO (dados dos vertices)
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, final_vertices.size() * sizeof(VertexData), final_vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,
+                 finalVertices.size() * sizeof(VertexData),
+                 finalVertices.data(),
+                 GL_STATIC_DRAW);
 
-    // EBO (indices)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO); // Correcao: Use GL_ELEMENT_ARRAY_BUFFER duas vezes
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, final_indices.size() * sizeof(unsigned int), final_indices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 finalIndices.size() * sizeof(unsigned int),
+                 finalIndices.data(),
+                 GL_STATIC_DRAW);
 
-    // Configuração dos atributos do vértice (Layouts)
+    // layout: position (0), uv (1), normal (2)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, position));
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(VertexData),
+        (void*)offsetof(VertexData, position));
 
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, uv));
+    glVertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE,
+        sizeof(VertexData),
+        (void*)offsetof(VertexData, normal));
 
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, normal));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(
+        3, 2, GL_FLOAT, GL_FALSE,
+        sizeof(VertexData),
+        (void*)offsetof(VertexData, uv));
 
-    glBindVertexArray(0);   
+    glBindVertexArray(0);
+
+    if (finalIndices.empty() || finalVertices.empty()) {
+    std::cerr << "AVISO: Modelo carregado, mas sem vertices ou indices validos. Nao foi possivel desenhar." << std::endl;
+    // VAO/VBO/EBO permanecerao 0
+    return;
+}
+    indexCount = (GLsizei)finalIndices.size();
+
+    std::cout << "Modelo carregado: " << path 
+              << " (vertices: " << finalVertices.size()
+              << ", indices: " << indexCount << ")" << std::endl;
+}
+
+void ImportedModel::Draw() const
+{
+    static bool first = true;
+    if (first) {
+        std::cout << "[ImportedModel::Draw] VAO=" << VAO
+                  << " indexCount=" << indexCount << std::endl;
+        first = false;
+    }
+
+    if (VAO == 0 || indexCount == 0) {
+        std::cout << "[ImportedModel::Draw] Nada a desenhar" << std::endl;
+        return;
+    }
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
 }

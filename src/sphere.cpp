@@ -69,6 +69,10 @@ Sphere::~Sphere ()
 
 void Sphere::Draw (StatePtr st)
 {
+  GLint prog = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    std::cout << "[ModelShape::Draw] current program = " << prog << std::endl;
+
   glBindVertexArray(m_vao);
   glDrawElements(GL_TRIANGLES,m_nind,GL_UNSIGNED_INT,0);
 }
