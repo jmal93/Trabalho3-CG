@@ -39,7 +39,7 @@ static void initialize(void)
   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
   // enable depth test
   glEnable(GL_DEPTH_TEST);
-  //glEnable(GL_CULL_FACE); // cull back faces
+  glEnable(GL_CULL_FACE); // cull back faces
 
   // create objects
   camera = Camera3D::Make(viewer_pos[0], viewer_pos[1], viewer_pos[2]);
