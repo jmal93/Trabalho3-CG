@@ -26,12 +26,6 @@ ModelShape::~ModelShape ()
 
 void ModelShape::Draw (StatePtr )
 {
-  // Debug: ver se o shader está realmente ligado
-    GLint prog = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
-    std::cout << "[ModelShape::Draw] current program = " << prog << std::endl;
-
-    if (!m_model_ptr) return;
 
     m_model_ptr->Draw(); 
 }

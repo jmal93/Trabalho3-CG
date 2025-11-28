@@ -80,7 +80,6 @@ void ImportedModel::loadOBJ(const char* path)
             normals.push_back(n);
         }
         else if (tag == "f") {
-            // coleta todos os tokens da face
             std::vector<std::string> faceTokens;
             std::string vertToken;
             while (ss >> vertToken) {
@@ -88,23 +87,18 @@ void ImportedModel::loadOBJ(const char* path)
             }
 
             if (faceTokens.size() < 3) {
-                // face estranha, ignora
                 continue;
             }
 
-            // converte cada token v/vt/vn em índices
-            std::vector<unsigned int> faceIndices; // índices no finalVertices
+            std::vector<unsigned int> faceIndices; 
             faceIndices.reserve(faceTokens.size());
 
             auto processVertexToken = [&](const std::string &tok) -> unsigned int {
                 int vIndex = 0, tIndex = 0, nIndex = 0;
 
-                // formato possível: v, v/vt, v//vn, v/vt/vn
-                // quebra no '/'
                 int slashCount = std::count(tok.begin(), tok.end(), '/');
 
                 if (slashCount == 0) {
-                    // só v
                     vIndex = std::stoi(tok);
                 } else {
                     std::stringstream vss(tok);
@@ -121,22 +115,19 @@ void ImportedModel::loadOBJ(const char* path)
                     if (!nStr.empty()) nIndex = std::stoi(nStr);
                 }
 
-                // OBJ: índices começam em 1. 0 significa "não tem".
-                // negativo conta a partir do fim (não tratado aqui, só checamos).
                 auto fixIndex = [](int idx, int size) -> int {
                     if (idx > 0) {
                         return idx - 1;
                     } else if (idx < 0) {
-                        return size + idx; // -1 = ultimo
+                        return size + idx;
                     }
-                    return -1; // 0 => sem indice
+                    return -1;
                 };
 
                 int pv = fixIndex(vIndex, static_cast<int>(positions.size()));
                 int pt = fixIndex(tIndex, static_cast<int>(uvs.size()));
                 int pn = fixIndex(nIndex, static_cast<int>(normals.size()));
 
-                // checagem de limites
                 if (pv < 0 || pv >= (int)positions.size()) {
                     std::cerr << "WARN: indice de posicao fora do range: " << vIndex 
                               << " em linha: " << line << std::endl;
@@ -177,14 +168,12 @@ void ImportedModel::loadOBJ(const char* path)
                 faceIndices.push_back(idx);
             }
 
-            // triangula (fan)
             for (size_t i = 1; i + 1 < faceIndices.size(); ++i) {
                 finalIndices.push_back(faceIndices[0]);
                 finalIndices.push_back(faceIndices[i]);
                 finalIndices.push_back(faceIndices[i + 1]);
             }
         }
-        // demais tags (mtl, usemtl, etc) ignoradas por enquanto
     }
 
     file.close();
@@ -194,7 +183,6 @@ void ImportedModel::loadOBJ(const char* path)
         return;
     }
 
-    // cria buffers OpenGL
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -236,7 +224,6 @@ void ImportedModel::loadOBJ(const char* path)
 
     if (finalIndices.empty() || finalVertices.empty()) {
     std::cerr << "AVISO: Modelo carregado, mas sem vertices ou indices validos. Nao foi possivel desenhar." << std::endl;
-    // VAO/VBO/EBO permanecerao 0
     return;
 }
     indexCount = (GLsizei)finalIndices.size();

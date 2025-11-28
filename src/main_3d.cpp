@@ -92,7 +92,7 @@ static void initialize(void)
   shd_tex->Link();
 
   NodePtr sphere_node = Node::Make(sphere_transform, {white}, {sphere});
-  NodePtr root = Node::Make(shader, {object_node, sphere_node});
+  NodePtr root = Node::Make(shader, {object_node});
   scene = Scene::Make(root);
 
   NodePtr floor_node = Node::Make(floor_transform, {floor_appearance}, {quad});
