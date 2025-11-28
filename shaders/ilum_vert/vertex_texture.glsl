@@ -32,6 +32,9 @@ void main (void)
   else 
     light = normalize(vec3(lpos)-veye); 
   vec3 neye = normalize(vec3(Mn*vec4(normal,0.0f)));
+  if (dot(neye, light) < 0) {
+    neye = -neye; // Inverte a normal se ela estiver apontando para longe da luz
+}
   float ndotl = dot(neye,light);
   v.color = mamb*lamb + mdif * ldif * max(0,ndotl); 
   if (ndotl > 0) {
